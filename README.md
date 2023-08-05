@@ -4,7 +4,7 @@ All the tools you'll need to improve your 2048 endgame skills
 ### If you have any questions, comments, or concerns, don't hesitate to ask on [Discord](https://discord.gg/8mmVNCP3a6) or [Twitter](https://twitter.com/h0si)
 
 ## tablegen
-### WARNING: this tool can make extremely large tables. 100 GB of free storage and 16 GB of memory is strongly recommended.
+### WARNING: this tool can make extremely large tables. 100 GB of free storage, 16 GB of memory, and a lot of patience are strongly recommended.
 
 To prepare to make a table:
 1. Find the file in the `move dir` folder that corresponds to your desired table
