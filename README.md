@@ -8,7 +8,7 @@ All the tools you'll need to improve your 2048 endgame skills
 
 To prepare to make a table:
 1. Find the file in the `move dir` folder that corresponds to your desired table
-2. copy and paste the contents of that file into the `movedir.js` file. The arrangement of tiles may be 
+2. copy and paste the contents of that file into the `movedir.js` file. The arrangement of tiles may be written in comments at the bottom of the file
 3. open `satisfied.js`
 4. change the list index (left) to whichever tile on the board needs to be the goal tile (zero-indexed), then change the other number (right) to the goal tile
 5. open `seqlistfromposition.js` and find `var start=[]`. This should be on line 61.
