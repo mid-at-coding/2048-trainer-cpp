@@ -1,3 +1,5 @@
+// what. literally what
+
 var satisfied=function(board){
   if(board[9]===1024){
       return true;

@@ -1,3 +1,6 @@
+// PURPOSE
+// this file is for reading and exporting a config specified in config.txt
+
 var fs=require("fs");
 var config={};
 var addkey=function(entry){
