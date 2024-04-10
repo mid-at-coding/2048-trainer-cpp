@@ -1,3 +1,6 @@
+// PURPOSE
+// gen all legal moves starting at some position
+
 var config=require("./config.js").config;
 var movefile=config.movefile;
 var movedirfile=config.movedirfile;

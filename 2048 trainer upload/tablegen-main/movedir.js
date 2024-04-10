@@ -2,7 +2,8 @@ var config=require("./config.js").config;
 var movefile=config.movefile;
 var move=require(movefile).move;
 var pair=require(movefile).pair;
-// TODO: figure what the fuck this file is for
+// if the board can move: return true and move in place
+// else: return false
 var moveleft=function(board){
 if(board[8]*board[9]*board[10]===0 || board[8]===board[9]){return 0;};
 return move(board,[0,1,2,3])|move(board,[4,5,6,7]);

@@ -12,6 +12,6 @@ var addkey=function(entry){
 fs.readFileSync("./config.txt","utf-8").split("\n").map(x=>addkey(x));
 //console.log(config);
 config.spaces*=1;
-config.s0*=1;
-config.s1*=1;
+config.s0*=1; // ending sum of tiles
+config.s1*=1; // starting sum of tiles
 exports.config=config;
