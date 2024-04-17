@@ -143,7 +143,7 @@ var solve=function(s){
       bestprob=Math.max(prob,bestprob);
     }
     probs=[a[i],bestprob].concat(probs);
-	// ??
+	// probs += {board, best probability}
     u+=probs.join(" ")+"\n";
 	// seperate out the probabiltiies of the subboards by a space and the root boards by a newline
   }
