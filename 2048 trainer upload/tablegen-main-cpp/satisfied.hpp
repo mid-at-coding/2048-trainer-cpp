@@ -2,6 +2,6 @@
 #define SATISFIED_H
 #include "board.hpp"
 
-bool satisfied(board);
+bool satisfied(Board);
 
 #endif

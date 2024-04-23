@@ -3,9 +3,9 @@
 #include "board.hpp"
 #include <map>
 struct boardProb{
-	board b;
+	Board b;
 	double p;
 };
-double evalprob(board&,const std::map<board,double>&,const std::map<board,double>&);
+double evalprob(Board&,const std::map<Board,double>&,const std::map<Board,double>&);
 void solve(int);
 #endif

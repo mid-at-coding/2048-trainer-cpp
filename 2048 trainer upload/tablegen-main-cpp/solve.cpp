@@ -9,26 +9,26 @@
 #include <vector>
 #include <string>
 
-double evalprob(board& moved, const std::map<board, double>& twoSpawnProbs, const std::map<board, double>& fourSpawnProbs){
+double evalprob(Board& moved, const std::map<Board, double>& twoSpawnProbs, const std::map<Board, double>& fourSpawnProbs){
 	// expectimax
 	int emptytiles = 0;
 	double prob2 = 0;
 	double prob4 = 0;
 	for(int i = 0; i < 16; i++){ 			// loop through all tiles
-		if(moved.val[i]) 					// if there's a tile, skip this spot
+		if(moved[i]) 					// if there's a tile, skip this spot
 			continue;
 		emptytiles++;    					// increment number of empty tiles
-		moved.val[i] = 2;					// change current empty tile to a two
+		moved[i] = 2;					// change current empty tile to a two
 		prob2 += twoSpawnProbs.at(moved);	// add probability given two spawn to prob2
-		moved.val[i] = 4;					// change current empty tile to a four
+		moved[i] = 4;					// change current empty tile to a four
 		prob2 += fourSpawnProbs.at(moved);	// add probability given four spawn to prob2
-		moved.val[i] = 0;					// reset tile to empty	
+		moved[i] = 0;					// reset tile to empty	
 	}
 	return ((9*prob2+prob4)/10)/emptytiles; // average over amount of empty tiles and also spawn rate
 }
 
-static std::vector<board> processBoards(std::vector<std::string> rawData){
-	std::vector<board> ret;
+static std::vector<Board> processBoards(std::vector<std::string> rawData){
+	std::vector<Board> ret;
 	for(int i = 0; i < rawData.size(); i++){
 		ret.push_back(strToBoard(rawData[i]));
 	}
@@ -102,8 +102,8 @@ static void writeTable(int sum, std::string data){
 }
 
 void solve(int sum){
-	board moved;
-	board currentBoard;
+	Board moved;
+	Board currentBoard;
 	std::string finalData;
 	Logger logger;
 	std::vector<std::string> tempRawData; 
@@ -113,12 +113,12 @@ void solve(int sum){
 	int fourSum = sum+4; 					// sum of tiles if a four spawns
 	std::vector<std::string> rawData; 		// get all positions that have the same sum of tiles
 	rawData = readBoards(sum);  				
-	std::vector<board> boards = processBoards(rawData);  	
+	std::vector<Board> boards = processBoards(rawData);  	
 	static bool cached = false;
-	static std::map<board, double> twoSpawnCache;  // if s+2 is calculated before s, s+4 will be s+2+2
+	static std::map<Board, double> twoSpawnCache;  // if s+2 is calculated before s, s+4 will be s+2+2
 											// no need to recalculate s+4, because s+2+2 is there
-	std::map<board, double> twoSpawnProbs;  // probabilities for boards with sum+2 tile sum
-	std::map<board, double> fourSpawnProbs; // probabilities for boards with sum+4 tile sum
+	std::map<Board, double> twoSpawnProbs;  // probabilities for boards with sum+2 tile sum
+	std::map<Board, double> fourSpawnProbs; // probabilities for boards with sum+4 tile sum
 	if(cached){
 		fourSpawnProbs = twoSpawnCache;
 	}

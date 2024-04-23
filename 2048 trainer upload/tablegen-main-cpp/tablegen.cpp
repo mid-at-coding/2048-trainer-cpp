@@ -4,8 +4,10 @@
 #include "move.hpp"
 #include "movedir.hpp"
 #include "satisfied.hpp"
+#include "solve.hpp"
 
 int main(){
-	Logger logger;
-	logger.log("hello world", Logger::INFO);
+	for(int i = std::stoi(config["s0"]); i > std::stoi(config["s1"]); i -= 2){
+		solve(i);
+	}
 }

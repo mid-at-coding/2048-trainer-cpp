@@ -1,8 +1,8 @@
 #include "satisfied.hpp"
 
 // dpdf win cond
-bool satisfied(board boar){
-	if(boar.val[9] == 1024)
+bool satisfied(Board boar){
+	if(boar[9] == 10)
 		return true;
 
 	return false;

@@ -3,9 +3,15 @@
 #include "error.hpp"
 
 constexpr int SPAM(char x){
-	return std::pow(2, (x >= 'A') ? (x >= 'a') ? (x - 'a' + 10) : (x - 'A' + 10) : (x - '0'));
+	int n = std::pow(2, (x >= 'A') ? (x >= 'a') ? (x - 'a' + 10) : (x - 'A' + 10) : (x - '0'));
+	if (n > 1)
+		return n;
+	return 0;
 }
 
+constexpr int LINEAR(char x){
+	return (x >= 'A') ? (x >= 'a') ? (x - 'a' + 10) : (x - 'A' + 10) : (x - '0');
+}
 constexpr char MAP(int x){
 	int log = std::log(x)/std::log(2);
 	switch (log){
@@ -27,14 +33,14 @@ constexpr char MAP(int x){
 	return 0;
 }
 
-board strToBoard(std::string str){
+Board strToBoard(std::string str){
 	Logger logger;
-	board b;
+	Board b;
 	if(str.length() >= 16){
 		logger.log("Board string longer than 16 characters!", Logger::NONFATAL);
 	}
 	for(int i = 0; i < str.length(); i++){
-		b.val[i] = SPAM(str[i]); // TODO: change to log
+		b[i] = LINEAR(str[i]); // TODO: change to log
 	}
 	return b;
 }
