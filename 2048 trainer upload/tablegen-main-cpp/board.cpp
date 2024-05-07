@@ -1,22 +1,22 @@
 #include "board.hpp"
+#include <cstdint>
 
-Tile::Tile(Board* board, int offset) {
+Tile::Tile(Board* board, uint64_t off) {
 	b = board;
-	data = (MASK & offset);
-	data = (data & (GET_TILE((*b).board, offset) >> 4));
+	offset = off;
+	val = GET_TILE((board->board), off);
 }
-Tile& Tile::operator=(const int& v){
-	SET_TILE((*b).board, (MASK & data), ((MASK >> 4)  & data ));
-	data = MASK & data; // clear second four bits
-	data = data | (GET_TILE((*b).board, (MASK & data)) >> 4); // set value
+Tile& Tile::operator=(const uint64_t& v){
+	SET_TILE(((*b).board), (uint64_t)offset, (uint64_t)v);
+	val = (v << OFFSET(15));
 	return *this;
 }
-Tile& Tile::operator+=(const int& v){
+Tile& Tile::operator+=(const uint64_t& v){
 	(*this) = (int)(*this) + v;
 	return (*this);
 }
-Tile::operator int(){
-	return ((MASK >> 4) & data);
+Tile::operator uint8_t(){
+	return (val & 0x0f);
 }   
 Tile Board::operator[](const int& x){
 	return Tile(this, x);
@@ -29,4 +29,8 @@ bool Board::operator>(const Board& r) const{
 }
 bool Board::operator==(const Board& r) const{
 	return board == r.board;
+}
+
+Board::Board(){
+	board = 0;
 }

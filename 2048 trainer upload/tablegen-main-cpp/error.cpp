@@ -13,9 +13,9 @@ std::string Logger::levelToStr(int sev){
 		case INFO:
 			return "[INFO] ";
 		case WARN:
-			return "[WARN] ";
+			return colorString("[WARN] ", Color(RGB{255, 255, 0}));
 		case NONFATAL:
-			return "[NONFATAL] ";
+			return colorString("[NONFATAL] ", Color(RGB{255, 75, 0}));
 		case FATAL: 
 			return colorString("[FATAL] ",Color(RGB{255,0,0}));
 		case NOTAG:

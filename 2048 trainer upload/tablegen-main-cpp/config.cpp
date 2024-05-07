@@ -7,7 +7,7 @@ std::map<std::string, std::string> config;
 void readConfig(){
 	Logger logger;
 	std::ifstream file;
-	file.open("./config");
+	file.open("./config.txt");
 	std::vector<std::string> data;
 	bool readingValue = false;
 	std::string currentLine;
@@ -17,6 +17,9 @@ void readConfig(){
 		exit(1);
 	}
 	while(std::getline(file, currentLine)){
+		while (currentLine.find("\r") != std::string::npos) {
+			currentLine.erase(currentLine.find("\r"), 1);
+		}
 		data.push_back(currentLine);
 	}
 	for(int i = 0; i < data.size(); i++){

@@ -57,63 +57,77 @@ static std::vector<boardProb> processBoardsWithProb(std::vector<std::string> raw
 	}
 	return ret;
 }
-static std::vector<std::string> readBoards(int sum){
+std::vector<Board> readBoards(int sum){
 	Logger logger;
-	std::vector<std::string> ret;
-	std::string temp;
+	std::vector<Board> ret;
+	Board temp;
 	std::ifstream file;
-	std::string fileName = "./" + config["positionsdir"] + "/" + std::to_string(sum);
-	file.open(fileName);
+	std::streampos fileEnd;
+	std::string fileName = "./" + config["positionsdir"] + "/" + std::to_string(sum) + ".tables";
+	file.open(fileName, std::ios::binary | std::ios::ate);
 	if(!file.is_open()){
 		logger.log("Could not open file: " + fileName, Logger::FATAL);
 		exit(1);
 	}
-	while(getline(file, temp))
+	fileEnd = file.tellg();
+	file.seekg(0);
+	for(int i = 0; i <= fileEnd; i+= sizeof(Board)){
+		file.read(reinterpret_cast<char*>(&temp), sizeof(Board));
 		ret.push_back(temp);
+	}
 	return ret;
 }
 
-static std::vector<std::string> readTables(int sum){
+static std::vector<boardProb> readTables(int sum){
 	Logger logger;
-	std::vector<std::string> ret;
-	std::string temp;
+	std::vector<boardProb> ret;
+	Board temp;
+	double tempProb;
 	std::ifstream file;
-	std::string fileName = "./" + config["tablesdir"] + "/" + std::to_string(sum);
-	file.open(fileName);
+	std::streampos fileEnd;
+	std::string fileName = "./" + config["tablesdir"] + "/" + std::to_string(sum) + ".tables";
+	file.open(fileName, std::ios::binary | std::ios::ate);
 	if(!file.is_open()){
 		logger.log("Could not open file: " + fileName, Logger::FATAL);
 		exit(1);
 	}
-	while(getline(file, temp))
-		ret.push_back(temp);
+	fileEnd = file.tellg();
+	file.seekg(0);
+	for(int i = 0; i <= fileEnd; i+= (sizeof(Board) + sizeof(double))){
+		file.read(reinterpret_cast<char*>(&temp), sizeof(Board));
+		file.read(reinterpret_cast<char*>(&tempProb), sizeof(double));
+		ret.push_back(boardProb{temp, tempProb});
+	}
 	return ret;
 }
 
-static void writeTable(int sum, std::string data){
+static void writeTable(int sum, std::vector<boardProb> data){
 	Logger logger;
 	std::ofstream file;
-	std::string fileName = "./" + config["tablesdir"] + "/" + std::to_string(sum) + ".txt";
+	std::string fileName = "./" + config["tablesdir"] + "/" + std::to_string(sum) + ".tables";
 	file.open(fileName);
 	if(!file.is_open()){
 		logger.log("Could not open file: " + fileName, Logger::FATAL);
 		exit(1);
 	}
-	file << data;
+	for(int i = 0; i < data.size(); i++){
+		file.write(reinterpret_cast<char*>(&data[i].b.board), sizeof(uint64_t));
+		file.write(reinterpret_cast<char*>(&data[i].p), sizeof(double));
+	}
 }
 
 void solve(int sum){
 	Board moved;
 	Board currentBoard;
-	std::string finalData;
+	std::vector<boardProb> finalData;
 	Logger logger;
-	std::vector<std::string> tempRawData; 
-	std::vector<boardProb> readData;
-	std::vector<std::string> probs;
+	std::vector<boardProb> tempData; 
+	std::vector<boardProb> probs;
 	int twoSum  = sum+2; 					// sum of tiles if a two spawns
 	int fourSum = sum+4; 					// sum of tiles if a four spawns
-	std::vector<std::string> rawData; 		// get all positions that have the same sum of tiles
+	std::vector<Board> rawData; 		    // get all positions that have the same sum of tiles
 	rawData = readBoards(sum);  				
-	std::vector<Board> boards = processBoards(rawData);  	
+	std::vector<Board> boards = rawData;
 	static bool cached = false;
 	static std::map<Board, double> twoSpawnCache;  // if s+2 is calculated before s, s+4 will be s+2+2
 											// no need to recalculate s+4, because s+2+2 is there
@@ -123,66 +137,71 @@ void solve(int sum){
 		fourSpawnProbs = twoSpawnCache;
 	}
 	else{
-		logger.log("Processing " + std::to_string(fourSum) + ".txt...", Logger::INFO);
-		tempRawData	 = readTables(fourSum);	                  	// read boards with probability (assuming 4 spawn)
-		readData = processBoardsWithProb(tempRawData);			// process boards
-		for(int i = 0; i < readData.size(); i++){
-			fourSpawnProbs[readData[i].b] = readData[i].p;  // put these results into fourSpawnProbs
+		logger.log("Processing " + std::to_string(fourSum) + ".tables...", Logger::INFO);
+		tempData	 = readTables(fourSum);	                  	// read boards with probability (assuming 4 spawn)
+		for(int i = 0; i < tempData.size(); i++){
+			fourSpawnProbs[tempData[i].b] = tempData[i].p;  // put these results into fourSpawnProbs
 		}
 	}
-	logger.log("Processing " + std::to_string(twoSum) + ".txt...", Logger::INFO);
-	tempRawData  = readTables(twoSum);				// read boards with probability (assuming 2 spawn)
-	readData = processBoardsWithProb(tempRawData);  // process boards
-	for(int i = 0; i < readData.size(); i++){
-		twoSpawnProbs[readData[i].b] = readData[i].p;  // put these results into twoSpawnProbs
+	logger.log("Processing " + std::to_string(twoSum) + ".tables...", Logger::INFO);
+	tempData  = readTables(twoSum);						// read boards with probability (assuming 2 spawn)
+	for(int i = 0; i < tempData.size(); i++){
+		twoSpawnProbs[tempData[i].b] = tempData[i].p;  // put these results into twoSpawnProbs
 	}
 	twoSpawnCache = twoSpawnProbs; // cache for s-2 case
 	logger.log("Solving s=" + std::to_string(sum), Logger::INFO);
 	
-	double bestProb = 0;
-	double currentProb = 0;
+	boardProb bestProb;
+	boardProb currentProb;
+	Board emptyBoard;
+	emptyBoard.board = 0;
+	bestProb.b.board = 0;
+	currentProb.b.board = 0;
+	bestProb.p = 0;
+	currentProb.p = 0;
 	for(int i = 0; i < boards.size(); i++){
 		// go through all the boards
 		currentBoard = boards[i];
 		if(satisfied(currentBoard)){
 			// if this board is a winstate
-			finalData = rawData[i] + "1\n";
+			currentProb.b = rawData[i];
+			currentProb.p = 1;
+			finalData.push_back(currentProb);
 			continue;
 		}
 		moved = currentBoard;// copy currentBoard into moved
 		if(moveleft(moved)){ // if moved can move left
-			probs.push_back("L"); // do shit
-			currentProb = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-			probs.push_back(std::to_string(currentProb));
-			bestProb = std::max(currentProb, bestProb);
+			currentProb.b[0] = 0b1000; // magic code
+			currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
+			probs.push_back(currentProb); // do shit
+			bestProb.p = std::max(currentProb.p, bestProb.p);
 		} 
 		moved = currentBoard;
 		if(moveright(moved)){ // do it for the other directions
-			probs.push_back("R"); 
-			currentProb = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-			probs.push_back(std::to_string(currentProb));
-			bestProb = std::max(currentProb, bestProb);
+			currentProb.b[0] = 0b0100;
+			currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
+			probs.push_back(currentProb);
+			bestProb.p = std::max(currentProb.p, bestProb.p);
 		}
 		moved = currentBoard;
 		if(moveup(moved)){ 
-			probs.push_back("U"); 
-			currentProb = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-			probs.push_back(std::to_string(currentProb));
-			bestProb = std::max(currentProb, bestProb);
+			currentProb.b[0] = 0b0010;
+			currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
+			probs.push_back(currentProb);
+			bestProb.p = std::max(currentProb.p, bestProb.p);
 		}
 		moved = currentBoard;
 		if(movedown(moved)){ 
-			probs.push_back("D"); 
-			currentProb = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-			probs.push_back(std::to_string(currentProb));
-			bestProb = std::max(currentProb, bestProb);
+			currentProb.b[0] = 0b0001;
+			currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
+			probs.push_back(currentProb);
+			bestProb.p = std::max(currentProb.p, bestProb.p);
 		}
 		for(int i = 0; i < probs.size(); i++){
-			finalData += probs[i];
-			if(i != probs.size() - 1)
-				finalData += " ";
+			finalData.push_back(probs[i]);
 		}
-		finalData += "\n";
+		currentProb.b[0] = 0b1111;
+		finalData.push_back(currentProb);
 	}
 	writeTable(sum, finalData);
 }
