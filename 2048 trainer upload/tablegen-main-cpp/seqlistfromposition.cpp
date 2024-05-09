@@ -1,7 +1,6 @@
 #include "board.hpp"
 #include "error.hpp"
 #include "config.hpp"
-#define BS_THREAD_POOL_ENABLE_PAUSE
 #include "BS_thread_pool.hpp" // gh.com/bshoshany/thread_pool
 #include <cstdint>
 #include "movedir.hpp"
@@ -10,10 +9,10 @@
 #include "seqlistfromposition.hpp"
 #include "parallel_hashmap/phmap.h"
 #include "maps.hpp"
-#include "satisfied.hpp"
 #include <iomanip>
 #include <mutex>
 #include "visited.hpp"
+#include "satisfied.hpp"
 using namespace std::chrono_literals;
 struct boardSpawn{
 	Board b;
@@ -28,16 +27,19 @@ static safe_map visited;
 static std::mutex pool_mutex;
 static BS::thread_pool q = BS::thread_pool();
 static void writeB(bool setSum = false, int sumIn = 0){
-	static long long unsigned boardNum;
+	static long long unsigned boardNum = 0;
+	static long long unsigned layerNum = 0;
 	static int sum;
 	static phmap::parallel_flat_hash_map<int, bool> sumWritten;
 	static int lastLayerSize = 1;
+	static int s0 = std::stoi(config["s0"]);
 	Logger logger;
 	std::ofstream file;
 	std::string fileName;
 	static auto firstWrite = std::chrono::system_clock::now();
 	static auto lastWrite = std::chrono::system_clock::now();
 	auto now = std::chrono::system_clock::now();
+	layerNum++;
 	if(setSum){
 		sum = sumIn;
 		globalsum = sum;
@@ -46,7 +48,6 @@ static void writeB(bool setSum = false, int sumIn = 0){
 	if(sumWritten[sum])
 		return;
 	sumWritten[sum] = true;
-
 	logger.log("Sum: " + std::to_string(sum), Logger::INFO);
 	boardNum += n.size();
 	logger.log("Boards processed:  " + std::to_string(boardNum), Logger::INFO);
@@ -54,9 +55,15 @@ static void writeB(bool setSum = false, int sumIn = 0){
 	lastLayerSize = n.size();
 	logger.log("Layer size:  " + std::to_string(n.size()), Logger::INFO);
 	if((now - lastWrite) / 1s != 0)
+		logger.log("Layers per second: " + std::to_string(1.0f / ((now - lastWrite) / 1s)), Logger::INFO);
+	if((now - lastWrite) / 1s != 0)
 		logger.log("Boards per second: " + std::to_string(n.size() / ((now - lastWrite) / 1s)), Logger::INFO);
 	if((now - firstWrite) / 1s != 0)
 		logger.log("Average boards per second: " + std::to_string(boardNum / ((now - firstWrite) / 1s)), Logger::INFO);
+	if((now - firstWrite) / 1s != 0){
+		logger.log("Average layers per second: " + std::to_string(((double)layerNum) / ((now - firstWrite) / 1s)), Logger::INFO);
+		logger.log("Estimated time remaining: " + std::to_string((int)((s0 - globalsum) / (((double)layerNum) / ((now - firstWrite) / 1s)))) + " seconds", Logger::INFO);
+	}
 
 	fileName = "./" + config["positionsdir"] + "/" + std::to_string(sum) + ".tables";
 	file.open(fileName);
@@ -198,8 +205,6 @@ static bool addToWriteData(Board b){
 static void addToWriteData(std::vector<Board>& b){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(satisfied(b[i]))
-			continue;
 		n.push_back(b[i]);
 	}
 }
@@ -207,8 +212,6 @@ static void addToWriteData(std::vector<Board>& b){
 static void addToWriteData(std::vector<Board>& b, int spawn){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(satisfied(b[i]))
-			continue;
 		if(spawn == 2)
 			n2.push_back(b[i]);
 		if(spawn == 4)
@@ -219,8 +222,6 @@ static void addToWriteData(std::vector<Board>& b, int spawn){
 static void addToWriteData(std::vector<boardSpawn>& b){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(satisfied(b[i].b))
-			continue;
 		if(b[i].spawn == 1){
 			n2.push_back(b[i].b);
 		}
@@ -240,6 +241,8 @@ static std::shared_ptr<BS::multi_future<std::vector<Board>>> processSpawns(int s
 		Logger logger;
 		std::vector<Board> boards;
 		for(int i = start; i < end; i++){
+			if(satisfied(n[i]))
+				continue;
 			auto spawns = genSpawns(n[i], spawn);
 
 			for(int j = 0; j < spawns->size(); j++){
@@ -260,6 +263,8 @@ static std::shared_ptr<BS::multi_future<std::vector<Board>>> processMoves(){
 		Logger logger;
 		std::vector<Board> boards;
 		for(int i = start; i < end; i++){
+			if(satisfied(n[i]))
+				continue;
 			auto moves = genMoves(n[i]);
 
 			if(!(*moves).size())
@@ -333,11 +338,13 @@ void gen_positions(Board& b, int sum){
 	n4.clear();
 	n.push_back(b);
 
-	while(n.size()){
+	while(n.size() && globalsum < std::stoi(config["s0"])){
 		processBoard();
 		q.wait();
 		writeB();
 	}
+	writeB();
+	writeB();
 	q.wait();
 
 	const auto end = std::chrono::system_clock::now();

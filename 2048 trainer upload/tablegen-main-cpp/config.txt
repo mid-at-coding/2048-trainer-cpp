@@ -4,5 +4,5 @@ tablesdir=tablestest
 movefile=./move.js
 movedirfile=./movedir.js
 satisfiedfile=./satisfied.js
-s0=4092
+s0=4096
 s1=256
