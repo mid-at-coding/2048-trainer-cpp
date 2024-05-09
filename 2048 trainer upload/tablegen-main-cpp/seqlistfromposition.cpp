@@ -10,8 +10,10 @@
 #include "seqlistfromposition.hpp"
 #include "parallel_hashmap/phmap.h"
 #include "maps.hpp"
+#include "satisfied.hpp"
 #include <iomanip>
 #include <mutex>
+#include "visited.hpp"
 using namespace std::chrono_literals;
 struct boardSpawn{
 	Board b;
@@ -22,10 +24,10 @@ static std::vector<Board> n;
 static std::vector<Board> n2;
 static std::vector<Board> n4;
 static std::mutex writeData_mutex;
-std::shared_ptr<phmap::parallel_flat_hash_map<uint64_t, bool>> visited;
-static std::mutex visited_mutex;
+static safe_map visited;
 static std::mutex pool_mutex;
-static void writeB(std::shared_ptr<phmap::parallel_flat_hash_map<uint64_t, bool>> voisited = visited, bool setSum = false, int sumIn = 0){
+static BS::thread_pool q = BS::thread_pool();
+static void writeB(bool setSum = false, int sumIn = 0){
 	static long long unsigned boardNum;
 	static int sum;
 	static phmap::parallel_flat_hash_map<int, bool> sumWritten;
@@ -33,6 +35,7 @@ static void writeB(std::shared_ptr<phmap::parallel_flat_hash_map<uint64_t, bool>
 	Logger logger;
 	std::ofstream file;
 	std::string fileName;
+	static auto firstWrite = std::chrono::system_clock::now();
 	static auto lastWrite = std::chrono::system_clock::now();
 	auto now = std::chrono::system_clock::now();
 	if(setSum){
@@ -47,12 +50,13 @@ static void writeB(std::shared_ptr<phmap::parallel_flat_hash_map<uint64_t, bool>
 	logger.log("Sum: " + std::to_string(sum), Logger::INFO);
 	boardNum += n.size();
 	logger.log("Boards processed:  " + std::to_string(boardNum), Logger::INFO);
-	logger.log("Layer multiplier:  " + std::to_string(n.size() / lastLayerSize), Logger::INFO);
+	logger.log("Layer multiplier:  " + std::to_string((double)n.size() / lastLayerSize), Logger::INFO);
 	lastLayerSize = n.size();
 	logger.log("Layer size:  " + std::to_string(n.size()), Logger::INFO);
 	if((now - lastWrite) / 1s != 0)
 		logger.log("Boards per second: " + std::to_string(n.size() / ((now - lastWrite) / 1s)), Logger::INFO);
-	std::lock_guard vislk(visited_mutex);
+	if((now - firstWrite) / 1s != 0)
+		logger.log("Average boards per second: " + std::to_string(boardNum / ((now - firstWrite) / 1s)), Logger::INFO);
 
 	fileName = "./" + config["positionsdir"] + "/" + std::to_string(sum) + ".tables";
 	file.open(fileName);
@@ -63,17 +67,12 @@ static void writeB(std::shared_ptr<phmap::parallel_flat_hash_map<uint64_t, bool>
 	std::unique_lock guard(writeData_mutex);
 	for(int i = 0; i < n.size(); i++){
 		file.write(reinterpret_cast<char*>(&n[i].board), sizeof(uint64_t));
-		visited->erase(n[i].board);
+		visited.clear(n[i].board);
 	}
-	logger.log("n[0]: " + std::to_string(getSum(n[0])), Logger::DEBUG);
-	outputBoard(n[0]);
-//	logger.log("n2[0]: " + std::to_string(getSum(n2[0])), Logger::DEBUG);
-//	outputBoard(n2[0]);
-//	logger.log("n4[0]: " + std::to_string(getSum(n4[0])), Logger::DEBUG);
-//	outputBoard(n4[0]);
 	n.clear();
 	n = n2;
 	n2 = n4;
+	n4.clear();
 	guard.unlock();
 	sum += 2;
 	globalsum = sum;
@@ -83,8 +82,22 @@ static void checkForBadBoards(){
 	Logger logger;
 	for(int i = 0; i < n.size(); i++){
 		if(getSum(n[i]) != globalsum){
-			logger.log("Found bad root board:", Logger::FATAL);
+			logger.log("Found bad root board:(" + std::to_string(getSum(n[i])) + ")", Logger::FATAL);
 			outputBoard(n[i]);
+			exit(1);
+		}
+	}
+	for(int i = 0; i < n2.size(); i++){
+		if(getSum(n2[i]) != globalsum + 2){
+			logger.log("Found bad +2 board:(" + std::to_string(getSum(n2[i])) + ")", Logger::FATAL);
+			outputBoard(n2[i]);
+			exit(1);
+		}
+	}
+	for(int i = 0; i < n4.size(); i++){
+		if(getSum(n4[i]) != globalsum + 4){
+			logger.log("Found bad +4 board:(" + std::to_string(getSum(n4[i])) + ")", Logger::FATAL);
+			outputBoard(n4[i]);
 			exit(1);
 		}
 	}
@@ -92,7 +105,16 @@ static void checkForBadBoards(){
 static bool checkForBadBoard(Board b){
 	Logger logger;
 	if(getSum(b) != globalsum){
-		logger.log("Found bad board:", Logger::FATAL);
+		logger.log("Found bad board:(" + std::to_string(getSum(b)) + ")", Logger::FATAL);
+		outputBoard(b);
+		return true;
+	}
+	return false;
+}
+static bool checkForBadBoard(Board b, int spawn){
+	Logger logger;
+	if(getSum(b) != globalsum + spawn){
+		logger.log("Found bad board:(" + std::to_string(getSum(b)) + ")", Logger::FATAL);
 		outputBoard(b);
 		return true;
 	}
@@ -102,7 +124,7 @@ static void checkForBadBoards(std::vector<Board> b){
 	Logger logger;
 	for(int i = 0; i < n.size(); i++){
 		if(getSum(b[i]) != globalsum){
-			logger.log("Found bad root board:", Logger::FATAL);
+			logger.log("Found bad root board:(" + std::to_string(getSum(b[i])) + ")", Logger::FATAL);
 			outputBoard(b[i]);
 			exit(1);
 		}
@@ -163,13 +185,7 @@ static std::shared_ptr<std::vector<Board>> genMoves(Board& b){
 }
 
 static bool visitBoard(Board b){
-	Logger logger;
-	if((*visited).contains(b.board))
-		return false;
-	visited_mutex.lock();
-	(*visited)[b.board] = true;
-	visited_mutex.unlock();
-	return true;
+	return !visited[b.board];
 }
 
 static bool addToWriteData(Board b){
@@ -182,32 +198,29 @@ static bool addToWriteData(Board b){
 static void addToWriteData(std::vector<Board>& b){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(!visitBoard(b[i]))
+		if(satisfied(b[i]))
 			continue;
 		n.push_back(b[i]);
 	}
-	visited_mutex.unlock();
 }
 
 static void addToWriteData(std::vector<Board>& b, int spawn){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(!visitBoard(b[i]))
+		if(satisfied(b[i]))
 			continue;
 		if(spawn == 2)
 			n2.push_back(b[i]);
 		if(spawn == 4)
 			n4.push_back(b[i]);
 	}
-	visited_mutex.unlock();
 }
 
 static void addToWriteData(std::vector<boardSpawn>& b){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(!visitBoard(b[i].b))
+		if(satisfied(b[i].b))
 			continue;
-		visited_mutex.unlock();
 		if(b[i].spawn == 1){
 			n2.push_back(b[i].b);
 		}
@@ -215,36 +228,31 @@ static void addToWriteData(std::vector<boardSpawn>& b){
 			n4.push_back(b[i].b);
 		}
 	}
-	visited_mutex.unlock();
 }
 
-static std::shared_ptr<BS::multi_future<std::vector<boardSpawn>>> processSpawns(BS::thread_pool& q){
+static std::shared_ptr<BS::multi_future<std::vector<Board>>> processSpawns(int spawn){
 	const int size = n.size();
 	std::unique_lock lk(pool_mutex);
 	static const auto ptr = visited;
 	const int currentSum = globalsum;
-	return std::make_shared<BS::multi_future<std::vector<boardSpawn>>>
-	(q.submit_blocks(0, size, [currentSum](const int start, const int end){
+	return std::make_shared<BS::multi_future<std::vector<Board>>>
+	(q.submit_blocks(0, size, [spawn](const int start, const int end){
 		Logger logger;
-		std::vector<boardSpawn> boards;
+		std::vector<Board> boards;
 		for(int i = start; i < end; i++){
-			writeData_mutex.lock();
-			auto spawns2 = genSpawns(n[i], 1);
-			writeData_mutex.unlock();
-			for(int j = 0; j < spawns2->size(); j++)
-				boards.push_back({(*spawns2)[j], 1});
-			writeData_mutex.lock();
-			auto spawns4 = genSpawns(n[i], 2);
-			writeData_mutex.unlock();
-			for(int j = 0; j < spawns4->size(); j++){
-					boards.push_back({(*spawns2)[j], 2});
+			auto spawns = genSpawns(n[i], spawn);
+
+			for(int j = 0; j < spawns->size(); j++){
+				if(!visitBoard((*spawns)[j]))
+					continue;
+				boards.push_back((*spawns)[j]);
 			}
 		}
 		return boards;
 	}));
 }
 
-static std::shared_ptr<BS::multi_future<std::vector<Board>>> processMoves(BS::thread_pool& q){
+static std::shared_ptr<BS::multi_future<std::vector<Board>>> processMoves(){
 	const int size = n.size();
 	std::unique_lock lk(pool_mutex);
 	return std::make_shared<BS::multi_future<std::vector<Board>>>(
@@ -252,54 +260,52 @@ static std::shared_ptr<BS::multi_future<std::vector<Board>>> processMoves(BS::th
 		Logger logger;
 		std::vector<Board> boards;
 		for(int i = start; i < end; i++){
-			writeData_mutex.lock();
 			auto moves = genMoves(n[i]);
+
 			if(!(*moves).size())
 				continue;
+
 			for(int j = 0; j < (*moves).size(); j++){
+				if(!visitBoard((*moves)[j]))
+					continue;
 				boards.push_back((*moves)[j]);
 			}
-			writeData_mutex.unlock();
 		}
-		logger.log("Checking output", Logger::DEBUG, 1);
-		checkForBadBoards(boards);
 		return boards;
 	}));
 }
 
-void processBoard(BS::thread_pool& q){
+void processBoard(){
 	Logger logger;
-	auto moves = processMoves(q);
-
+	std::shared_ptr<BS::multi_future<std::vector<Board>>> moves = processMoves();
+	
 	(*moves).wait();
-	std::vector<boardSpawn> currSpawnBlock;
-	std::vector<Board> currMoveBlock;
+	std::vector<Board> currBlock;
 	int moveNum = 0;
 	int spawnNum = 0;
-	logger.log("Checking input boards", Logger::DEBUG);
-	checkForBadBoards();
 	for(int i = 0; i < (*moves).size(); i++){
-		currMoveBlock = (*moves)[i].get();
-		addToWriteData(currMoveBlock);
-		moveNum += currMoveBlock.size();
+		currBlock = (*moves)[i].get();
+		addToWriteData(currBlock);
+		moveNum += currBlock.size();
 	}
-	logger.log("Checking global output boards", Logger::DEBUG);
-	logger.log("Current sum:" + std::to_string(globalsum), Logger::DEBUG);
-	checkForBadBoards();
 	(*moves).clear();
 
-	q.wait();
-	auto spawns = processSpawns(q);
+	std::shared_ptr<BS::multi_future<std::vector<Board>>> spawns2 = processSpawns(1);
+	std::shared_ptr<BS::multi_future<std::vector<Board>>> spawns4 = processSpawns(2);
 
-	(*spawns).wait();
-	for(int i = 0; i < (*spawns).size(); i++){
-		currSpawnBlock = (*spawns)[i].get();
-		addToWriteData(currSpawnBlock);
-		spawnNum += currSpawnBlock.size();
+	(*spawns2).wait();
+	(*spawns4).wait();
+	for(int i = 0; i < (*spawns2).size(); i++){
+		currBlock = (*spawns2)[i].get();
+		addToWriteData(currBlock, 2);
+		spawnNum += currBlock.size();
+
+		currBlock = (*spawns4)[i].get();
+		addToWriteData(currBlock, 4);
+		spawnNum += currBlock.size();
 	}
-	logger.log("Spawns: " + std::to_string(spawnNum), Logger::INFO);
-	(*spawns).clear();
-	logger.log("Root boards: " + std::to_string(n2.size()), Logger::INFO);
+	(*spawns2).clear();
+	(*spawns4).clear();
 }
 
 static void writeBoards(int sum, std::vector<Board>& positions2){
@@ -317,24 +323,20 @@ static void writeBoards(int sum, std::vector<Board>& positions2){
 
 void gen_positions(Board& b, int sum){
 	const auto start = std::chrono::system_clock::now();
-	BS::thread_pool q = BS::thread_pool(1);
-	phmap::parallel_flat_hash_map<uint64_t, bool> voisited;
-	visited = std::make_shared<phmap::parallel_flat_hash_map<uint64_t,bool>>(voisited);
-	auto ptr = visited;
 	Logger logger;
 
 	logger.log("Starting board:", Logger::INFO);
 	outputBoard(b);
-	writeB(ptr, true, 518);
+	writeB(true, 518);
 	n.clear();
 	n2.clear();
 	n4.clear();
 	n.push_back(b);
 
 	while(n.size()){
-		processBoard(q);
+		processBoard();
 		q.wait();
-		writeB(ptr);
+		writeB();
 	}
 	q.wait();
 
