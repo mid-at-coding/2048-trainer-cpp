@@ -49,7 +49,10 @@ bool pair(Board& board, int a, int b){
 		return false;
 
 	if(c == 0 || c == d){ // ??
-		board[a] += d;
+		if(c == 0)
+			board[a] = d;
+		else
+			board[a] += 1;
 		board[b] = 0;
 		return true;
 	}

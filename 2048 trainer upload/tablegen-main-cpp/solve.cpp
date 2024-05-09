@@ -71,7 +71,7 @@ std::vector<Board> readBoards(int sum){
 	}
 	fileEnd = file.tellg();
 	file.seekg(0);
-	for(int i = 0; i <= fileEnd; i+= sizeof(Board)){
+	for(int i = 0; i < fileEnd; i+= sizeof(Board)){
 		file.read(reinterpret_cast<char*>(&temp), sizeof(Board));
 		ret.push_back(temp);
 	}
