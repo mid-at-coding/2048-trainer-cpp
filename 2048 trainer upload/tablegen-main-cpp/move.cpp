@@ -6,7 +6,7 @@ bool move(Board& board, std::vector<int> positions){
 	bool moved = 0;
 	int a = board[positions[0]];
 	for(int i = 0; i < positions.size(); i++){
-		int b = board[positions[i]];
+		int b = GET_TILE(board.board, positions[i]);
 		if((a == b && a > 0) || (a == 0 && b > 0)){
 			moved = true;
 			break;
@@ -14,7 +14,7 @@ bool move(Board& board, std::vector<int> positions){
 		a = b;
 	}
 	for(int i = 0; i < positions.size(); i++){
-		int now = board[positions[i]];
+		int now = GET_TILE(board.board, positions[i]);
 		if(!now)
 			continue;
 		else if(!curr){
@@ -32,11 +32,11 @@ bool move(Board& board, std::vector<int> positions){
 		j++;
 	}
 	if(curr){
-		board[positions[j]] = curr;
+		SET_TILE(board.board, positions[j], curr);
 		j++;
 	}
 	while(j < positions.size()){
-		board[positions[j]] = 0;
+		SET_TILE(board.board, positions[j], 0);
 		j++;
 	}
 
@@ -50,10 +50,10 @@ bool pair(Board& board, int a, int b){
 
 	if(c == 0 || c == d){ // ??
 		if(c == 0)
-			board[a] = d;
+			SET_TILE(board.board, a, d);
 		else
 			board[a] += 1;
-		board[b] = 0;
+		SET_TILE(board.board, b, 0);
 		return true;
 	}
 	return false;

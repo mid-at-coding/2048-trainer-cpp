@@ -159,8 +159,8 @@ std::shared_ptr<std::vector<Board>> genSpawns(Board b, int n){
 	Logger logger;
 	Board boardCopy = b;
 	for(int i = 0; i < std::stoi(config["spaces"]); i++){
-		if(boardCopy[i] == 0){
-			boardCopy[i] = n;
+		if(GET_TILE(boardCopy.board, i) == 0){
+			SET_TILE(boardCopy.board, i, n);
 			ret.push_back(boardCopy);
 			boardCopy = b;
 		}
