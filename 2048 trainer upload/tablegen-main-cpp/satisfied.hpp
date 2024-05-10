@@ -3,5 +3,6 @@
 #include "board.hpp"
 
 bool satisfied(Board);
+bool satisfied(uint64_t);
 
 #endif

@@ -7,7 +7,7 @@
 
 void outputBoard(Board&);
 int getSum(Board&);
-std::shared_ptr<std::vector<Board>> genSpawns(Board b, int n);
+std::vector<Board>* genSpawns(const Board& b, int n);
 
 void processBoard(std::shared_ptr<phmap::parallel_flat_hash_map<uint64_t, bool>> visited);
 

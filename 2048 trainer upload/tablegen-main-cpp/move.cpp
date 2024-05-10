@@ -22,7 +22,7 @@ bool move(Board& board, std::vector<int> positions){
 			continue;
 		}
 		int p = positions[j];
-		board[p] = curr;
+		SET_TILE(board.board, p, curr);
 		if(curr==now){
 			board[p] += 1;
 			curr=0;
