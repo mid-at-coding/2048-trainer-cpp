@@ -23,12 +23,12 @@ static std::vector<uint64_t> n;
 static std::vector<uint64_t> n2;
 static std::vector<uint64_t> n4;
 static std::mutex writeData_mutex;
-static safe_map visited;
+static safe_map<uint64_t>* visited;
 static std::mutex pool_mutex;
-static BS::thread_pool q = BS::thread_pool();
+static BS::thread_pool q = BS::thread_pool(1);
 static void writeB(
 #ifdef COPY_BOARDS
-		phmap::parallel_flat_hash_set<uint64_t> n ,
+		std::vector<uint64_t> n ,
 #endif
 		bool setSum = false, int sumIn = 0){
 	static long long unsigned boardNum = 0;
@@ -52,10 +52,8 @@ static void writeB(
 	logger.log("Sum: " + std::to_string(sum), Logger::INFO);
 	boardNum += n.size();
 	logger.log("Boards processed:  " + std::to_string(boardNum), Logger::INFO);
-	logger.log("Layer multiplier:  " + std::to_string((double)n.size() / lastLayerSize), Logger::INFO);
-	if(visited.collisions)
-		logger.log("Cache collisions:  " + std::to_string(visited.collisions), Logger::NONFATAL);
-	visited.collisions = 0;
+	if(n.size() - lastLayerSize)
+		logger.log("Layer multiplier:  " + std::to_string((double)n.size() / lastLayerSize), Logger::INFO);
 	lastLayerSize = n.size();
 	logger.log("Layer size:  " + std::to_string(n.size()), Logger::INFO);
 	if((now - lastWrite) / 1s != 0)
@@ -80,7 +78,7 @@ static void writeB(
 	for(int i = 0; i < n.size(); i++){
 #ifndef DRY_RUN
 		file.write(reinterpret_cast<char*>(&(n[i])), sizeof(uint64_t));
-		visited.clear(n[i]);
+		visited->clear((uint64_t)n[i]);
 #endif
 	}
 	sum += 2;
@@ -173,10 +171,6 @@ static std::vector<Board>* genMoves(const Board& b){
 	return ret;
 }
 
-static bool visitBoard(Board& b){
-	return !visited.visit(b.board);
-}
-
 static bool addToWriteData(Board& b){
 	if(!writeData_mutex.try_lock())
 		return false;
@@ -233,7 +227,7 @@ static BS::multi_future<std::vector<Board>>* processSpawns(int spawn){
 			spawns = genSpawns(curr, spawn);
 
 			for(int j = 0; j < spawns->size(); j++){
-				if(!visitBoard((*spawns)[j]))
+				if(visited->visit((*spawns)[j].board))
 					continue;
 				boards.push_back((*spawns)[j]);
 			}
@@ -265,7 +259,7 @@ static BS::multi_future<std::vector<Board>>* processMoves(){
 				continue;
 
 			for(int j = 0; j < (*moves).size(); j++){
-				if(!visitBoard((*moves)[j]))
+				if(visited->visit((*moves)[j].board))
 					continue;
 				boards.push_back((*moves)[j]);
 			}
@@ -326,6 +320,10 @@ void gen_positions(Board& b, const int sum){
 	static int s0 = std::stoi(config["s0"]);
 	const auto start = std::chrono::system_clock::now();
 	Logger logger;
+	logger.log("Initializing safe map...", Logger::INFO);
+	auto v = safe_map<uint64_t>(100000000, 5);
+	logger.log("Done.", Logger::INFO);
+	visited = &v;
 	logger.log("Starting board:", Logger::INFO);
 	outputBoard(b);
 	writeB(
