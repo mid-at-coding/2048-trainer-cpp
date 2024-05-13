@@ -1,10 +1,10 @@
 #include "move.hpp"
 
-bool move(Board& board, std::vector<int> positions){
+bool move(Board& board, const std::vector<int>& positions){
 	int curr = 0;
 	int j = 0;
 	bool moved = 0;
-	int a = board[positions[0]];
+	int a = GET_TILE(board.board, positions[0]);
 	for(int i = 0; i < positions.size(); i++){
 		int b = GET_TILE(board.board, positions[i]);
 		if((a == b && a > 0) || (a == 0 && b > 0)){

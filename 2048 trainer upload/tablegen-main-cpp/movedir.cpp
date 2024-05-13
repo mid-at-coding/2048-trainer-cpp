@@ -1,6 +1,7 @@
 #include "movedir.hpp"
 #include <vector>
-/* dpdf
+#define DPDF
+#ifdef DPDF
 bool moveleft(Board& board){
 	if(board[8]*board[9]*board[10]==0 || board[8]==board[9]){ return false; }
 	return move(board,std::vector<int>({0,1,2,3}))|move(board,std::vector<int>({4,5,6,7}));
@@ -14,7 +15,9 @@ bool moveup(Board& board){
 }
 bool movedown(Board& board){
 	return move(board,std::vector<int>({10,8,4,0}))|move(board,std::vector<int>({9,5,1}))|pair(board,6,2)|pair(board,7,3);
-}; */
+}; 
+#endif
+#ifdef TWELVE_SPACE
 bool moveleft(Board& b){
 	if(b[8]*b[9]*b[10]*b[11]==0||b[8]==b[9]||b[10]==b[11]){ return 0; };
 	return move(b,std::vector<int>({0,1,2,3}))|move(b,std::vector<int>({4,5,6,7}));
@@ -29,6 +32,7 @@ bool moveup(Board& b){
 bool movedown(Board& b){
 	return move(b,std::vector<int>({10,8,4,0}))|move(b,std::vector<int>({11,9,5,1}))|pair(b,6,2)|pair(b,7,3);
 };
+#endif
 
 // 0  1  2  3
 // 4  5  6  7

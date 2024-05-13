@@ -5,14 +5,17 @@
 #include <cstdint>
 #include "movedir.hpp"
 #include <fstream>
-#include <memory>
+#include "unordered_dense/include/ankerl/unordered_dense.h"
+#include "parallel-hashmap/parallel_hashmap/phmap.h"
 #include "seqlistfromposition.hpp"
-#include "parallel_hashmap/phmap.h"
 #include "maps.hpp"
 #include <iomanip>
+#include <boost/sort/sort.hpp>
 #include <mutex>
-#include "visited.hpp"
 #include "satisfied.hpp"
+#include <tbb/tbb.h>
+#define DPDF
+#define COPY_BOARDS
 using namespace std::chrono_literals;
 struct boardSpawn{
 	Board b;
@@ -23,14 +26,46 @@ static std::vector<uint64_t> n;
 static std::vector<uint64_t> n2;
 static std::vector<uint64_t> n4;
 static std::mutex writeData_mutex;
-static safe_map<uint64_t>* visited;
 static std::mutex pool_mutex;
-static BS::thread_pool q = BS::thread_pool(1);
-static void writeB(
-#ifdef COPY_BOARDS
-		std::vector<uint64_t> n ,
+static BS::thread_pool q;
+static int comp(const void* a, const void* b){
+	if((*(uint64_t*)a) == (*(uint64_t*)b))
+		return 0;
+	if((*(uint64_t*)a) > (*(uint64_t*)b))
+		return 1;
+	return -1;
+}
+
+static void writeB(std::vector<uint64_t> boards, int sum){
+	std::string fileName;
+	static long long unsigned boardNum;
+	static long long unsigned lastLayerSize;
+	static auto firstWrite = std::chrono::system_clock::now();
+	auto now = std::chrono::system_clock::now();
+	std::ofstream file;
+	Logger logger;
+	boardNum += boards.size();
+	logger.log("Sum: " + std::to_string(sum), Logger::INFO);
+	if((now - firstWrite) / 1s != 0)
+		logger.log("Average boards per second: " + std::to_string(boardNum / ((now - firstWrite) / 1s)), Logger::INFO);
+	if(n.size() - lastLayerSize)
+		logger.log("Layer multiplier:  " + std::to_string((double)boards.size() / lastLayerSize), Logger::INFO);
+	lastLayerSize = boards.size();
+	logger.log("Layer size:  " + std::to_string(boards.size()), Logger::INFO);
+	fileName = "./" + config["positionsdir"] + "/" + std::to_string(sum) + ".tables";
+	file.open(fileName);
+	if(!file.is_open()){
+		logger.log("Could not open file: " + fileName, Logger::FATAL);
+		exit(1);
+	}
+	for(int i = 0; i < boards.size(); i++){
+#ifndef DRY_RUN
+		file.write(reinterpret_cast<char*>(&(boards[i])), sizeof(uint64_t));
 #endif
-		bool setSum = false, int sumIn = 0){
+	}
+}
+
+static void writeB( bool setSum = false, int sumIn = 0){
 	static long long unsigned boardNum = 0;
 	static long long unsigned layerNum = 0;
 	static int sum;
@@ -78,7 +113,6 @@ static void writeB(
 	for(int i = 0; i < n.size(); i++){
 #ifndef DRY_RUN
 		file.write(reinterpret_cast<char*>(&(n[i])), sizeof(uint64_t));
-		visited->clear((uint64_t)n[i]);
 #endif
 	}
 	sum += 2;
@@ -115,7 +149,14 @@ static void checkForBadBoards(std::vector<Board> b){
 void outputBoard(Board& b){
 	int pos = 0;
 	for(int i = 0; i < 16; i++){
-		if(i == 10 || i == 11 || i == 14 || i == 15)
+		if(
+#ifdef TWELVE_SPACE
+				i == 10 || i == 11 || i == 14 || i == 15
+#endif
+#ifdef DPDF
+				i == 10 || i == 11 || i == 13 || i == 14 || i == 15
+#endif
+				)
 			std::cout << std::setw(3) << ("x");
 		else
 			std::cout << std::setw(3) << (COMMON(b[pos++]));
@@ -124,6 +165,51 @@ void outputBoard(Board& b){
 			std::cout << std::endl;
 	}
 	std::cout << std::endl;
+}
+void outputBoard(uint64_t& b){
+	int pos = 0;
+	for(int i = 0; i < 16; i++){
+		if(i == 10 || i == 11 || i == 14 || i == 15)
+			std::cout << std::setw(3) << ("x");
+		else{
+			std::cout << std::setw(3) << (COMMON(GET_TILE(b, pos)));
+			pos++;
+		}
+		std::cout << " " ;
+		if(!((i + 1) % 4))
+			std::cout << std::endl;
+	}
+	std::cout << std::endl;
+}
+static void deleteDupes(std::vector<uint64_t>* boards){
+	Logger logger;
+// 	SET
+/*	phmap::parallel_flat_hash_set<uint64_t, phmap::priv::hash_default_hash<uint64_t>, phmap::priv::hash_default_eq<uint64_t>, phmap::priv::Allocator<uint64_t>, 4, std::mutex> s;
+	const auto size = boards->size();
+	q.submit_blocks(0lu, size, [boards, &s](const int start, const int end){
+		for(int i = start; i < end; i++)
+			s.insert((*boards)[i]);
+	}).wait();
+	boards->assign(s.begin(), s.end()); */
+//	SORT
+	boost::sort::block_indirect_sort(boards->begin(), boards->end());
+	boards->erase(std::unique(boards->begin(), boards->end()), boards->end());
+//	CONVOLUTION
+/*	const auto size = boards->size();
+	std::vector<int> curr;
+	int last;
+	BS::multi_future<std::vector<int>> res = q.submit_blocks(1lu, size, [boards](const int start, const int end){
+		std::vector<int> ret;
+		for(int i = start; i < end; i++)
+			ret.push_back((*boards)[i] - (*boards)[i - 1]);
+		return ret;
+	});
+	for(int i = 0; i < boards->size(); i++){
+		if(curr.size() < i - last)
+			curr = res[i].get();
+		if(curr[last - i] == 0) // this board is equal to the last one
+			boards->erase(boards->begin() + i);
+	} */
 }
 int getSum(Board& b){
 	int s = 0;
@@ -188,9 +274,9 @@ static void addToWriteData(std::vector<Board>& b){
 static void addToWriteData(std::vector<Board>& b, int spawn){
 	std::lock_guard lock(writeData_mutex);
 	for(int i = 0; i < b.size(); i++){
-		if(spawn == 2)
+		if(spawn == 1)
 			n2.push_back(b[i].board);
-		if(spawn == 4)
+		if(spawn == 2)
 			n4.push_back(b[i].board);
 	}
 }
@@ -207,19 +293,23 @@ static void addToWriteData(std::vector<boardSpawn>& b){
 	}
 }
 
-static BS::multi_future<std::vector<Board>>* processSpawns(int spawn){
+static std::vector<uint64_t>* processSpawns(int spawn){
+	Logger logger;
 	const int size = n.size();
-	std::unique_lock lk(pool_mutex);
 	const int currentSum = globalsum;
-	auto ret = new BS::multi_future<std::vector<Board>>
-	(q.submit_blocks(0, size, [spawn](const int start, const int end){
+//	pool_mutex.lock();
+#ifdef COPY_BOARDS
+	auto nCpy = new std::vector<uint64_t>();
+	(*nCpy) = n;
+#endif
+	q.detach_blocks(0, size, [spawn, nCpy](const int start, const int end){
 
 		Logger logger;
 		std::vector<Board> boards;
 		std::vector<Board>* spawns;
 		Board curr;
 		for(auto i = start; i < end; i++){
-			curr.board = n[i];
+			curr.board = (*nCpy)[i]; // segfault
 			if(satisfied(curr)){
 				logger.log("Board is a winstate, skipping", Logger::INFO);
 				continue;
@@ -227,28 +317,34 @@ static BS::multi_future<std::vector<Board>>* processSpawns(int spawn){
 			spawns = genSpawns(curr, spawn);
 
 			for(int j = 0; j < spawns->size(); j++){
-				if(visited->visit((*spawns)[j].board))
-					continue;
+//				if((*visited)[(*spawns)[j].board] == true)
+//					continue;
+//				(*visited)[(*spawns)[j].board] = true;
 				boards.push_back((*spawns)[j]);
 			}
 			delete spawns;
 		}
-		return boards;
-	}));
-	return ret;
+		addToWriteData(boards, spawn);
+	});
+//	pool_mutex.unlock();
+	return nCpy;
 }
 
-static BS::multi_future<std::vector<Board>>* processMoves(){
+static std::vector<uint64_t>* processMoves(){
+	Logger logger;
+//	pool_mutex.lock();
 	const int size = n.size();
-	std::unique_lock lk(pool_mutex);
-	auto ret = new BS::multi_future<std::vector<Board>> (
-	q.submit_blocks(0, size, [](const int start, const int end){
+#ifdef COPY_BOARDS
+	auto nCpy = new std::vector<uint64_t>();
+	(*nCpy) = n;
+#endif
+	q.detach_blocks(0, size, [nCpy](const int start, const int end){
 		Logger logger;
 		std::vector<Board> boards;
 		Board curr;
 		std::vector<Board>* moves;
 		for(auto i = start; i < end; i++){
-			curr.board = n[i];
+			curr.board = (*nCpy)[i];
 			if(satisfied(curr)){
 				logger.log("Board is a winstate, skipping", Logger::INFO);
 				continue;
@@ -259,48 +355,35 @@ static BS::multi_future<std::vector<Board>>* processMoves(){
 				continue;
 
 			for(int j = 0; j < (*moves).size(); j++){
-				if(visited->visit((*moves)[j].board))
-					continue;
+//				if((*visited)[(*moves)[j].board] == true)
+//					continue;
+//				(*visited)[(*moves)[j].board] = true;
 				boards.push_back((*moves)[j]);
 			}
 			delete moves;
 		}
-		return boards;
-	}));
-	return ret;
+		addToWriteData(boards);
+	});
+//	pool_mutex.unlock();
+	return nCpy;
 }
 
 void processBoard(){
 	Logger logger;
-	BS::multi_future<std::vector<Board>>* moves = processMoves();
-	
-	std::vector<Board> currBlock;
-	int moveNum = 0;
-	int spawnNum = 0;
-	(*moves).wait();
-	for(int i = 0; i < (*moves).size(); i++){
-		currBlock = (*moves)[i].get();
-		addToWriteData(currBlock);
-		moveNum += currBlock.size();
-	}
-	delete moves;
 
-	BS::multi_future<std::vector<Board>>* spawns2 = processSpawns(1);
-	BS::multi_future<std::vector<Board>>* spawns4 = processSpawns(2);
+	deleteDupes(&n);
+	auto nCpy = processMoves();
+	q.wait();
+	delete nCpy;
+	deleteDupes(&n);
 
-	(*spawns2).wait();
-	(*spawns4).wait();
-	for(int i = 0; i < (*spawns2).size(); i++){
-		currBlock = (*spawns2)[i].get();
-		addToWriteData(currBlock, 2);
-		spawnNum += currBlock.size();
-
-		currBlock = (*spawns4)[i].get();
-		addToWriteData(currBlock, 4);
-		spawnNum += currBlock.size();
-	}
-	delete spawns2;
-	delete spawns4;
+	nCpy = processSpawns(1);
+	auto nCpy2 = processSpawns(2);
+	q.wait();
+	deleteDupes(&n4);
+	deleteDupes(&n2);
+	delete nCpy;
+	delete nCpy2;
 }
 
 static void writeBoards(int sum, std::vector<Board>& positions2){
@@ -316,38 +399,39 @@ static void writeBoards(int sum, std::vector<Board>& positions2){
 		file.write(reinterpret_cast<char*>(&positions2[i].board), sizeof(uint64_t));
 }
 
-void gen_positions(Board& b, const int sum){
+void gen_positions(Board& b, const int sum, const int cores){
 	static int s0 = std::stoi(config["s0"]);
 	const auto start = std::chrono::system_clock::now();
 	Logger logger;
-	logger.log("Initializing safe map...", Logger::INFO);
-	auto v = safe_map<uint64_t>(100000000, 5);
-	logger.log("Done.", Logger::INFO);
-	visited = &v;
+	q.reset(cores);
 	logger.log("Starting board:", Logger::INFO);
 	outputBoard(b);
-	writeB(
-#ifdef COPY_BOARDS
-			n, 
+#ifndef COPY_BOARDS
+	writeB( true, sum );
 #endif
-			true, sum);
 	n.clear();
 	n2.clear();
 	n4.clear();
 	n.push_back(b.board);
+	auto nCpy = n;
+	globalsum = sum;
+	int currentSum = globalsum;
 
 	while(n.size() && globalsum < s0){
 		processBoard();
-		q.wait();
 #ifdef COPY_BOARDS
-		auto nCpy = n;
-		q.detach_task([nCpy]{
+		nCpy = n;
+		currentSum = globalsum;
+//		pool_mutex.lock();
+		q.detach_task([&nCpy, currentSum]{
 #endif
+#ifndef DRY_RUN
 			writeB(
 #ifdef COPY_BOARDS
-					nCpy
+					nCpy, currentSum
 #endif
 					);
+#endif
 #ifdef COPY_BOARDS
 		});
 #endif
@@ -356,15 +440,18 @@ void gen_positions(Board& b, const int sum){
 		n2 = n4;
 		n4.clear();
 		globalsum += 2;
+#ifdef COPY_BOARDS
+//		pool_mutex.unlock();
+#endif
 	}
 	writeB(
 #ifdef COPY_BOARDS
-			n
+			n2, globalsum
 #endif
 			);
 	writeB(
 #ifdef COPY_BOARDS
-			n
+			n4, globalsum + 2
 #endif
 			);
 	q.wait();
@@ -372,3 +459,4 @@ void gen_positions(Board& b, const int sum){
 	const auto end = std::chrono::system_clock::now();
 	logger.log("Time: " + std::to_string((end - start) / 1s), Logger::INFO);
 }
+

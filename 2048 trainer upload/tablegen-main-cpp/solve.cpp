@@ -6,12 +6,12 @@
 #include "movedir.hpp"
 #include "satisfied.hpp"
 #include "BS_thread_pool.hpp"
-#include "parallel_hashmap/phmap.h"
 #include "seqlistfromposition.hpp"
 #include <fstream>
 #include <vector>
 #include <string>
 #include <bitset>
+#include <cmath>
 
 enum move{
 	left,
@@ -20,7 +20,6 @@ enum move{
 	down
 };
 
-static BS::thread_pool q = BS::thread_pool(2);
 
 static Board pack(enum move m, double prob){
 	Board ret;
@@ -37,7 +36,7 @@ static Board pack(enum move m, double prob){
 	return ret;
 }
 
-double evalprob(Board& moved, const phmap::parallel_flat_hash_map<uint64_t, double>& twoSpawnProbs, const phmap::parallel_flat_hash_map<uint64_t, double>& fourSpawnProbs){
+double evalprob(Board& moved, const ankerl::unordered_dense::map<uint64_t, double>& twoSpawnProbs, const ankerl::unordered_dense::map<uint64_t, double>& fourSpawnProbs){
 	// expectimax
 	int emptytiles = 0;
 	double prob2 = 0;
@@ -146,7 +145,7 @@ static void writeTable(int sum, std::vector<boardProb> data){
 	}
 }
 
-void solve(int sum){
+void solve(int sum, BS::thread_pool &q){
 	Logger logger;
 	std::vector<boardProb> tempData; 
 	std::vector<boardProb> consolidatedData;
@@ -156,9 +155,9 @@ void solve(int sum){
 	rawData = readBoards(sum);  				
 	std::vector<Board> boards = rawData;
 	static bool cached = false;
-	static phmap::parallel_flat_hash_map<uint64_t, double> twoSpawnCache;  // if s+2 is calculated before s, s+4 will be s+2+2
-	phmap::parallel_flat_hash_map<uint64_t, double> twoSpawnProbs;  // probabilities for boards with sum+2 tile sum
-	phmap::parallel_flat_hash_map<uint64_t, double> fourSpawnProbs; // probabilities for boards with sum+4 tile sum
+	static ankerl::unordered_dense::map<uint64_t, double> twoSpawnCache;  // if s+2 is calculated before s, s+4 will be s+2+2
+	ankerl::unordered_dense::map<uint64_t, double> twoSpawnProbs;  // probabilities for boards with sum+2 tile sum
+	ankerl::unordered_dense::map<uint64_t, double> fourSpawnProbs; // probabilities for boards with sum+4 tile sum
 
 	if(cached){
 		fourSpawnProbs = twoSpawnCache;
@@ -177,80 +176,5 @@ void solve(int sum){
 	}
 	twoSpawnCache = twoSpawnProbs; // cache for s-2 case
 	logger.log("Solving s=" + std::to_string(sum), Logger::INFO);
-	const int size = boards.size();
-	auto data = q.submit_blocks(0, size, [&boards, &rawData, &twoSpawnProbs, &fourSpawnProbs](const int start, const int end){
-		Board moved;
-		Board currentBoard;
-		boardProb bestProb;
-		boardProb currentProb;
-		Board emptyBoard;
-		Logger logger;
-		std::vector<boardProb> probs = {};
-		std::vector<boardProb> finalData = {};
-		for(int i = start; i < end; i++){
-			emptyBoard.board = 0;
-			bestProb.b.board = 0;
-			currentProb.b.board = 0;
-			bestProb.p = 0;
-			currentProb.p = 0;
-			// go through all the boards
-			currentBoard = boards[i];
-			if(satisfied(currentBoard)){
-				// if this board is a winstate
-				logger.log("Winstate", Logger::DEBUG);
-				currentProb.b = rawData[i];
-				currentProb.p = 1;
-				finalData.push_back(currentProb);
-				continue;
-			}
-			moved = currentBoard;// copy currentBoard into moved
-			if(moveleft(moved)){ // if moved can move left
-				currentProb.b[0] = 0b1000; // magic code
-				currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-				if(currentProb.p != 0){
-					logger.log("Prob:" + std::to_string(currentProb.p), Logger::INFO);
-					outputBoard(moved);
-					pack(left, currentProb.p);
-					exit(0);
-				}
-				probs.push_back(currentProb); // do shit
-				bestProb.p = std::max(currentProb.p, bestProb.p);
-			} 
-			moved = currentBoard;
-			if(moveright(moved)){ // do it for the other directions
-				currentProb.b[0] = 0b0100;
-				currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-				probs.push_back(currentProb);
-				bestProb.p = std::max(currentProb.p, bestProb.p);
-			}
-			moved = currentBoard;
-			if(moveup(moved)){ 
-				currentProb.b[0] = 0b0010;
-				currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-				probs.push_back(currentProb);
-				bestProb.p = std::max(currentProb.p, bestProb.p);
-			}
-			moved = currentBoard;
-			if(movedown(moved)){ 
-				currentProb.b[0] = 0b0001;
-				currentProb.p = evalprob(moved,twoSpawnProbs,fourSpawnProbs);
-				probs.push_back(currentProb);
-				bestProb.p = std::max(currentProb.p, bestProb.p);
-			}
-			for(int i = 0; i < probs.size(); i++){
-				finalData.push_back(probs[i]);
-			}
-			currentProb.b[0] = 0b1111;
-			finalData.push_back(currentProb);
-		}
-		return finalData;
-	});
-	data.wait();
-	consolidatedData.clear();
-	for(int i = 0; i < data.size(); i++){
-		auto block = data[i].get();
-		for(int j = 0; j < block.size(); j++)
-			consolidatedData.push_back(block[j]);
-	} 
-	writeTable(sum, consolidatedData);
+	writeTable(sum, finalData);
 }

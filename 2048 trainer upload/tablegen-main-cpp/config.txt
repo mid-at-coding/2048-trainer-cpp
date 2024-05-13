@@ -1,8 +1,8 @@
-spaces=12
+spaces=11
 positionsdir=positionstest
 tablesdir=tablestest
 movefile=./move.js
 movedirfile=./movedir.js
 satisfiedfile=./satisfied.js
-s0=4400
+s0=1280
 s1=256
