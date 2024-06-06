@@ -1,0 +1,3 @@
+[submodule "2048 trainer upload/tablegen-main-cpp/2048 trainer upload/tablegen-main-cpp/komihash"]
+	path = 2048 trainer upload/tablegen-main-cpp/2048 trainer upload/tablegen-main-cpp/komihash
+	url = https://github.com/avaneev/komihash
