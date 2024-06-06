@@ -1,2 +1,2 @@
-g++ -Ofast -std=gnu++20 -ltbb -fopenmp *.cpp -o tablegen
+g++ -O3 -std=gnu++20 -ltbb -fopenmp *.cpp -o tablegen
 
